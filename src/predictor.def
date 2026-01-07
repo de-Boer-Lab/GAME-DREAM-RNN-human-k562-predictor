@@ -1,0 +1,101 @@
+Bootstrap: docker
+From: python:3.13-slim
+
+
+%files
+    ./dream_rnn_script_and_utils/dreamRNN_predict.py /dream_rnn_script_and_utils/dreamRNN_predict.py
+    ./dream_rnn_script_and_utils/prixfixe /dream_rnn_script_and_utils/prixfixe
+    ./dream_rnn_script_and_utils/dream_rnn_k562_model_weight/model_best.pth /dream_rnn_script_and_utils/dream_rnn_k562_model_weight/model_best.pth
+    ./dream_rnn_script_and_utils/dream_rnn_preprocessing_utils.py /dream_rnn_script_and_utils/dream_rnn_preprocessing_utils.py
+    ./script_and_utils /script_and_utils
+    ../dream_rnn_environment.yml /dream_rnn_environment.yml
+
+%environment
+    # Prevent binding of host directories by default
+    export APPTAINER_NO_MOUNT="home,tmp,proc,sys,dev"
+    export LC_ALL=C
+    export PATH="/opt/conda/envs/dream-rest/bin:$PATH"
+    export LD_LIBRARY_PATH="/opt/conda/envs/dream-rest/lib:$LD_LIBRARY_PATH"
+
+%post
+    echo "Installing system dependencies..."
+    apt-get update && \
+    apt-get install -y --no-install-recommends wget bzip2 ca-certificates && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+    echo "Setting up Miniconda..."
+    mkdir -p /opt && \
+    wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
+    bash /tmp/miniconda.sh -b -p /opt/conda && \
+    rm -rf /tmp/miniconda.sh
+
+    echo "Initializing Conda..."
+    export PATH="/opt/conda/bin:$PATH"
+    . /opt/conda/etc/profile.d/conda.sh
+
+    echo "Setting solver to classic and disabling plugins..."
+    CONDA_NO_PLUGINS=true conda config --set solver classic
+
+    echo "Creating Conda environment 'dream-rest'..."
+    CONDA_NO_PLUGINS=true conda env create -f /dream_rnn_environment.yml
+
+    echo "Verifying Conda environment creation..."
+    if ! conda env list | grep -q 'dream-rest'; then
+        echo "Error: Conda environment 'dream-rest' was not created successfully."
+        exit 1
+    fi
+
+    echo "Setting permissions..."
+    chmod -R 755 /dream_rnn_script_and_utils /script_and_utils /opt/conda
+    chmod +x /opt/conda/envs/dream-rest/bin/python
+
+    echo "Cleaning up temporary files..."
+    rm -rf /dream_rnn_environment.yml
+    conda clean --all --yes
+
+%runscript
+    export PATH="/opt/conda/envs/dream-rest/bin:$PATH"
+    exec python3 /script_and_utils/dream_rnn_predictor_rest_api.py "$@"
+
+%startscript
+    export PATH="/opt/conda/envs/dream-rest/bin:$PATH"
+    exec python3 /script_and_utils/dream_rnn_predictor_rest_api.py "$@"
+
+%labels
+    Author "Satyam Priyadarshi"
+    Version "1.0"
+    Description "A RESTful DREAM-RNN Predictor for the Genomic API for Model Evaluation Framework"
+
+%help
+    This container for Predictor includes:
+    - A Flask-based REST API (`dream_rnn_predictor_rest_api.py`).
+    - Integrated Dream-RNN model with its dependencies and DREAM conda environment created using `dream_rnn_environment.yml`.
+    - Pre-trained model weights (`model_best.pth`) for predictions.
+    - Support scripts like `dream_rnn_preprocessing_utils.py`, `error_message_functions_updated.py`, and `predictor_help_message.json`.
+
+    Run the container
+    ```
+    apptainer run --nv --containall dream_rnn_predictor.sif HOST PORT
+    ```
+
+    Details:
+    - The container launches a Flask-based server to receive data via HTTP POST requests.
+    - Replace `HOST` and `PORT` with the server and port configuration for the evaluator.
+
+    API Endpoints:
+    - GET  /formats - Returns supported request and response formats
+    - GET  /help    - Returns predictor metadata and usage information
+    - POST /predict - Main endpoint for submitting prediction requests
+
+    Purpose:
+    - Facilitates genomic model evaluation and prediction using the DREAM-RNN framework.
+    - It is designed to seamlessly integrate with other tools via API endpoints.
+
+    Example Command:
+    ```
+    apptainer run --nv --containall dream_rnn_predictor.sif 172.16.47.244 5000
+    ```
+
+    Arguments:
+    1. `HOST`: IP address or hostname of the Predictor server.
+    2. `PORT`: Port number the Predictor is listening on.
