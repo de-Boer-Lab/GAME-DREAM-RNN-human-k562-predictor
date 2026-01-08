@@ -8,7 +8,7 @@ The DREAM-RNN Predictor can only return point expression predictions for K562 (M
 
 - [Main GAME Repository](https://github.com/de-Boer-Lab/Genomic-API-for-Model-Evaluation)
 - GAME Documentation: <LINK HERE!!!>
-- [DREAM-RNN K562](https://github.com/de-Boer-Lab/random-promoter-dream-challenge-2022/tree/main/benchmarks/human>)
+- [DREAM-RNN K562](https://github.com/de-Boer-Lab/random-promoter-dream-challenge-2022/tree/main/benchmarks/human)
 
 ---
 
