@@ -1,4 +1,4 @@
-# GAME-DREAM-RNN-human-k562-predictor
+# GAME DREAM-RNN Human K562 Predictor
 
 DREAM-RNN model [(Rafi et al. 2024, Nature Biotechnology)](https://www.nature.com/articles/s41587-024-02414-w) trained on MPRA data from Agarwal et. al 2023 and can be used for any sequence-to-expression predictions (single task).
 
@@ -6,9 +6,10 @@ The DREAM-RNN Predictor can only return point expression predictions for K562 (M
 
 ## Important Links
 
-- [Main GAME Repository](https://github.com/de-Boer-Lab/Genomic-API-for-Model-Evaluation)
+- To learn more about the GAME Framework ([Main GAME Repository](https://github.com/de-Boer-Lab/Genomic-API-for-Model-Evaluation), [preprint](https://www.biorxiv.org/content/10.1101/2025.07.04.663250v1.full))
 - GAME Documentation: <LINK HERE!!!>
-- [DREAM-RNN K562](https://github.com/de-Boer-Lab/random-promoter-dream-challenge-2022/tree/main/benchmarks/human)
+- Pre-built DREAM-RNN container image: [Zenodo](https://zenodo.org/records/18178626)
+- To learn more about DREAM-RNN: [DREAM-RNN K562](https://github.com/de-Boer-Lab/random-promoter-dream-challenge-2022/tree/main/benchmarks/human)
 
 ---
 
@@ -17,8 +18,6 @@ The DREAM-RNN Predictor can only return point expression predictions for K562 (M
 ## **Overview**
 
 This document outlines the structure of the API codebase for DREAM-RNN and how it integrates with the containerized setup. The architecture is designed as a containerized microservice that communicates via HTTP REST endpoints.
-
----
 
 ---
 
@@ -47,8 +46,6 @@ DREAM_RNN_GAME/
         ├── predictor_help_message.json     # Help message file
         └── schema_validation.py            # Input JSON validation
 ```
-
----
 
 ---
 
@@ -90,15 +87,11 @@ DREAM_RNN_GAME/
 
 ---
 
----
-
 ## Interlude: Creating a Wrapper Function for API JSON Structure
 
-Before diving into the configuration and running of the API, it is important to ensure that the output of DREAM-RNN (the raw predictions) are structured in compliance with the API's JSON format.
+Before diving into the configuration and running of the API, it is important to ensure that the output of DREAM-RNN (the raw predictions) is structured in compliance with the API JSON format.
 
 The Predictor API relies on the model's output as the foundation for constructing its JSON response. The integration process becomes highly efficient as long as the model adheres to the `seq_id: expression_prediction` format, which DREAM-RNN does already.
-
----
 
 ---
 
@@ -142,8 +135,6 @@ The wrapper allows for predictions to be made by the model when the `predict_dre
 
 ---
 
----
-
 ## **3. Configuring and Running the API** (Similar to [Basic Instructions for Test Evaluator and Predictor](https://github.com/de-Boer-Lab/Genomic-API-for-Model-Evaluation/tree/main/src/training_examples/Apptainer/Test_Evaluator_Predictor))
 
 ### 3.1 Configuring the Containers Using Definition Files
@@ -168,7 +159,7 @@ Definition files provide a declarative way to define:
 
 ### **Why These Specific Configurations?**
 
-### **Predictor API Container**
+#### **Predictor API Container**
 
 1. **Base Image**:
     - `python:3.13-slim` is chosen for its lightweight nature and Python-specific optimizations.
@@ -223,7 +214,7 @@ apptainer run --containall -B /local/data:/data my_container.sif ...
     ```
 
     - `-nv`: Enables NVIDIA GPU support (required for efficient DREAM-RNN inference).
-    - Replace `HOST` with the server's IP, which can be found using `hostname -I`, and `PORT` with the desired [port number](https://www.geeksforgeeks.org/50-common-ports-you-should-know/).
+    - Replace `HOST` with the server's IP, which can be found using `hostname`, followed by a `-i` or `-I` flag , and `PORT` with the desired [port number](https://www.geeksforgeeks.org/50-common-ports-you-should-know/).
     - The Predictor container will bind to the specified host and port and expose endpoints.
     - Ensure that the port (e.g., `5000`) is open and not blocked by any firewall or network policies. Ports above 1024 are usually free to use on most computers/servers.  
 
@@ -234,8 +225,6 @@ apptainer run --containall -B /local/data:/data my_container.sif ...
         ```bash
         * Running on http://172.16.47.244:5000/ (Press CTRL+C to quit)
         ```
-
----
 
 ---
 
