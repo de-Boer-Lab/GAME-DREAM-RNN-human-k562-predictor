@@ -1,7 +1,5 @@
 '''Error Classes and Error Checking Functions for Predictor'''
 
-import numpy as np
-
 # ERROR CLASSES
 # Error classes can be added here to easily keep track of error status codes
 
@@ -55,6 +53,7 @@ def check_seqs_specifications(sequences, json_return_error_model):
     for seq_id, seq in sequences.items():
         if not seq:
             json_return_error_model["prediction_request_failed"].append(f"sequence '{seq_id}' is empty")
+            continue
         
         invalid_chars = set(seq.upper()) - valid_bases
         if invalid_chars:
@@ -64,6 +63,16 @@ def check_seqs_specifications(sequences, json_return_error_model):
 
 # check the the mandatory_keys exist in the .json files
 def check_mandatory_keys(evaluator_keys, json_return_error):
+    """
+    Check that all mandatory top-level keys are present in the payload
+
+    Args:
+        evaluator_keys (list): list of keys present in the Evaluator payload
+        json_return_error (dict): dictionary to store error messages
+
+    Returns:
+        dict: Updated json_return_error with any missing key errors added
+    """
 
     mandatory_keys = ["readout", "prediction_tasks", "sequences"] # NOTE: "request" removed
     evaluator_keys_set = set(evaluator_keys)
@@ -132,28 +141,36 @@ def check_prediction_task_name(prediction_tasks, json_return_error):
 
 
 def check_prediction_task_type(prediction_tasks, json_return_error):
-
+    # DREAM-RNN only predicts expression. We accept "expression" itself and
+    # the "expression_*" subtypes (e.g. expression_mRNA, expression_pol2 -- see
+    # API spec). Other top-level type categories (binding_*, conformation_*)
+    # are rejected here to fail early instead of running the model and
+    # returning expression predictions labeled with a non-expression type.
+ 
     # loop through object to check each array
     for prediction_task in prediction_tasks:
         # print(prediction_task)
-        prediction_task_options = ["accessibility", "expression"]
+        prediction_task_options = ["expression"]
         if type(prediction_task['type']) == list:
             json_return_error['bad_prediction_request'].append("'type' should only have 1 value")
-
+ 
         else:
-
+ 
             if isinstance(prediction_task['type'], str) == True:
-
+ 
                 if (prediction_task['type'] in prediction_task_options or
-                    prediction_task['type'].startswith(('binding_', 'expression_', 'conformation_'))):
+                    prediction_task['type'].startswith('expression_')):
                     pass
                 else:
-                    json_return_error['bad_prediction_request'].append("prediction type " + str(prediction_task['type']) + " is not recognized")
-
+                    json_return_error['bad_prediction_request'].append(
+                        f"prediction type '{prediction_task['type']}' is not supported by DREAM-RNN. "
+                        "Only 'expression' and 'expression_*' subtypes are accepted."
+                    )
+ 
                 pass
             else:
                 json_return_error['bad_prediction_request'].append("'type' value should be a string")
-
+ 
     return(json_return_error)
 
 
@@ -215,7 +232,7 @@ def check_prediction_task_scale(prediction_tasks, json_return_error):
             pass
     return(json_return_error)
 
-def check_prediction_ranges(prediction_ranges, sequences, json_return_error):
+def check_prediction_ranges(prediction_ranges, json_return_error):
     """
     Checks that prediction_ranges are formatted correctly.
     Now includes checks for positive integers and start <= end.
@@ -224,15 +241,18 @@ def check_prediction_ranges(prediction_ranges, sequences, json_return_error):
         
         if not isinstance(value, list):
             json_return_error['bad_prediction_request'].append(f"Values for '{key}' in 'prediction_ranges' must be in a list")
-            
+            continue
+        
         if not value:
             continue
         
         if len(value) != 2:
             json_return_error['bad_prediction_request'].append(f"Range array for '{key}' in 'prediction_ranges' must have 2 elements")
+            continue
         
         if not all(isinstance(num, int) for num in value):
             json_return_error['bad_prediction_request'].append(f"Values in '{key}' in 'prediction_ranges' must be integers")
+            continue
         
         start = value[0]
         end = value[1]
@@ -242,17 +262,6 @@ def check_prediction_ranges(prediction_ranges, sequences, json_return_error):
             
         if start > end:
             json_return_error['bad_prediction_request'].append(f"Invalid range for '{key}' in 'prediction_ranges': start index ({start}) cannot be greater than end index ({end}). Received [{start}, {end}]")
-
-        # UPDATED: Out-of-bounds check with a clearer message
-        seq_len = len(sequences.get(key, ''))
-        # Check start index bounds as well, just in case
-        if start >= seq_len or end >= seq_len:
-            # Handle the empty sequence case for a clean message
-            if seq_len == 0:
-                 err_msg = f"Invalid range for '{key}': cannot specify a range for a non-existent or empty sequence."
-            else:
-                err_msg = f"Invalid range for '{key}': index is out of bounds. The maximum valid index for a sequence of length {seq_len} is {seq_len - 1}."
-            json_return_error['bad_prediction_request'].append(err_msg)
     
     return json_return_error
 

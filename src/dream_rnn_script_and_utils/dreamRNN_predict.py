@@ -99,8 +99,8 @@ upstream_adapter_seq = "AGGACCGGATCAACT"
 downstream_adapter_seq = "CATTGCGTGAACCGA"
 
 # Prediction Function
-def predict_dream_rnn(sequences, include_rev):
-    
+def predict_dream_rnn(sequences, prediction_ranges, upstream_seq, downstream_seq, include_rev):
+    # ADDITION ^^^ 3 new arguments -- pred ranges, upstream, and downstream seqs
     """
     Predict expression values using the DREAM-RNN model.
 
@@ -120,9 +120,14 @@ def predict_dream_rnn(sequences, include_rev):
         # Wrap the iteration with tqdm for a progress bar
         for seq_id, seq in tqdm.tqdm(sequences.items(),
                                     desc="Predictions in progress", unit="sequence"):
+            
+            seq_specific_prediction_ranges = None
+            if prediction_ranges is not None:
+                seq_specific_prediction_ranges = prediction_ranges.get(seq_id) or None
+            
             # Process sequence for padding
-            encoded_seq = process_sequence(seq, TARGET_LENGTH, SEQ_SIZE,
-                        upstream_adapter_seq, downstream_adapter_seq)
+            encoded_seq = process_sequence(seq, seq_specific_prediction_ranges, upstream_seq, downstream_seq,
+                        TARGET_LENGTH, upstream_adapter_seq, downstream_adapter_seq)
             
             # Include reverse complement information on sequence ID
             if include_rev:
@@ -150,5 +155,10 @@ def predict_dream_rnn(sequences, include_rev):
         return predictions
     
     except Exception as e:
+        # If the error is already a known API error (like BadRequestError from preprocessing prediction_ranges bound validation),
+        # re-raise it so the Flask app receives the correct Status 400 code.
+        if hasattr(e, 'status_code'):
+            raise e
+        
         # Raise a standardized PredictionFailedError that our Flask handler can catch
         raise PredictionFailedError(f"An unexpected error occurred during model prediction: {e}")

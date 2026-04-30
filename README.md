@@ -2,14 +2,14 @@
 
 DREAM-RNN model [(Rafi et al. 2024, Nature Biotechnology)](https://www.nature.com/articles/s41587-024-02414-w) trained on MPRA data from Agarwal et. al 2023 and can be used for any sequence-to-expression predictions (single task).
 
-The DREAM-RNN Predictor can only return point expression predictions for K562 (Matcher is never used, and it will return K562 predictions regardless of the cell type requested). Because it has hardcoded adapters (that were present in the model’s training data), it will ignore any adapter sequences that are sent. Sequences shorter than its 200bp input are centered and padded equally with Ns on either side, while sequence longer than 200bp are cropped to the target input length. Prediction ranges sent from the Evaluator are used to crop the input sequence to the desired start and stop indices.
+The DREAM-RNN Predictor can only return point expression predictions for K562 (Matcher is never used, and it will return K562 predictions regardless of the cell type requested). <<ADD information about `prediction_ranges` logic>>
 
 ## Important Links
 
 - To learn more about the GAME Framework ([Main GAME Repository](https://github.com/de-Boer-Lab/Genomic-API-for-Model-Evaluation), [preprint](https://www.biorxiv.org/content/10.1101/2025.07.04.663250v1.full))
-- GAME Documentation: <LINK HERE!!!>
-- Pre-built DREAM-RNN container image: [Zenodo](https://zenodo.org/records/18178626)
-- To learn more about DREAM-RNN: [DREAM-RNN K562](https://github.com/de-Boer-Lab/random-promoter-dream-challenge-2022/tree/main/benchmarks/human)
+- GAME Documentation: [ReadTheDocs](https://genomic-api-for-model-evaluation-documentation.readthedocs.io)
+- Pre-built DREAM-RNN container image: [Zenodo](<<ADD NEW LINK HERE>>)
+- To learn more about DREAM-RNN: [DREAM-RNN Human K562](https://github.com/de-Boer-Lab/random-promoter-dream-challenge-2022/tree/main/benchmarks/human)
 
 ---
 
@@ -28,23 +28,24 @@ The DREAM-RNN-API is organized as follows. The Predictor now utilizes a Flask ap
 ```bash
 DREAM_RNN_GAME/
 ├── README.md
-├── dream_rnn_environment.yml          # Conda environment file
+├── dream_rnn_environment.yml                # Conda environment file
 └── src
     ├── README.md
-    ├── predictor.def                  # Predictor container definition file
-    ├── dream_rnn_script_and_utils/    # Model-specific logic
-    │   ├── dreamRNN_predict.py             # Core model inference script
+    ├── dream_rnn_predictor.def              # Predictor container definition file
+    ├── dream_rnn_script_and_utils/          # Model-specific logic
+    │   ├── dreamRNN_predict.py              # Core model inference script
     │   ├── dream_rnn_preprocessing_utils.py # Preprocessing utilities
-    │   ├── dream_rnn_k562_model_weight/    # Pre-trained model weights
+    │   ├── dream_rnn_k562_model_weight/     # Pre-trained model weights
     │   │   ├── model_best.pth
     │   │   └── ... (optimizer, scheduler, metrics)
-    │   └── prixfixe/                       # Model framework scripts
-    └── script_and_utils/                   # API and Server logic
-        ├── dream_rnn_predictor_rest_api.py # Flask-based REST API script
-        ├── error_checking_functions.py     # Error handling
-        ├── predictor_content_handler.py    # Request processing logic
-        ├── predictor_help_message.json     # Help message file
-        └── schema_validation.py            # Input JSON validation
+    │   └── prixfixe/                        # Model framework scripts
+    └── script_and_utils/                    # API and Server logic
+        ├── config.py                        # Configuration script
+        ├── dream_rnn_predictor_rest_api.py  # Flask-based REST API script
+        ├── error_checking_functions.py      # Error handling
+        ├── predictor_content_handler.py     # Request processing logic
+        ├── predictor_help_message.json      # Help message file
+        └── schema_validation.py             # Input JSON validation
 ```
 
 ---
@@ -56,6 +57,7 @@ DREAM_RNN_GAME/
 - **Purpose**: A Flask-based web server that listens for HTTP requests, validates inputs, runs the DREAM-RNN model, and returns structured JSON responses.
 - **Core Script**: `src/script_and_utils/dream_rnn_predictor_rest_api.py`.
 - **Supporting Scripts, Error Handling, Help Files**:
+  - `config.py`
   - `schema_validation.py`
   - `predictor_content_handler.py`
   - `dream_rnn_preprocessing_utils.py`
@@ -101,7 +103,7 @@ The API JSON format wraps predictions with metadata to describe tasks, cell type
 
 ```json
 {
-    "predictor_name": "DREAM-RNN_Human_K562",
+    "predictor_name": "DREAM-RNN_Human_K562_20260407-140628_PDT",
     "prediction_tasks": [
         {
             "name": "task1",
@@ -145,7 +147,7 @@ Containerizing the DREAM-RNN API involves creating **definition (.def) files** t
 
 Definition files provide a declarative way to define:
 
-1. **Base Image**: The starting point of the container (e.g. ubuntu or python:3.9-slim).
+1. **Base Image**: The starting point of the container (e.g. ubuntu or python:3.13-slim).
 2. **File Structure**: Which files to copy into the container during build and which directories to bind/mount at runtime.
 3. **Dependencies**: System-level and Python libraries required for the API to function.
 4. **Execution Environment**: Configurations such as environment variables, Python environments, and permissions.
@@ -265,7 +267,7 @@ apptainer run --containall -B /local/data:/data my_container.sif ...
 
     ```json
     {
-    "predictor_name": "DREAM-RNN_Human_K562",
+    "predictor_name": "DREAM-RNN_Human_K562_20260407-140628_PDT",
     "prediction_tasks": [
         {
             "name": "gosai_synthetic_sequences",
@@ -274,7 +276,7 @@ apptainer run --containall -B /local/data:/data my_container.sif ...
             "cell_type_requested": "K562",
             "cell_type_actual": "K562",
             "scale_prediction_requested": "linear",
-            "scale_prediction_actual": "log",
+            "scale_prediction_actual": "linear",
             "species_requested": "homo_sapiens",
             "species_actual": "homo_sapiens",
             "predictions": {

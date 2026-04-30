@@ -1,0 +1,110 @@
+Bootstrap: docker
+From: python:3.13-slim
+
+%files
+    ./dream_rnn_script_and_utils/dreamRNN_predict.py /dream_rnn_script_and_utils/dreamRNN_predict.py
+    ./dream_rnn_script_and_utils/dream_rnn_preprocessing_utils.py /dream_rnn_script_and_utils/dream_rnn_preprocessing_utils.py
+    ./dream_rnn_script_and_utils/prixfixe /dream_rnn_script_and_utils/prixfixe
+    ./dream_rnn_script_and_utils/dream_rnn_k562_model_weight/model_best.pth /dream_rnn_script_and_utils/dream_rnn_k562_model_weight/model_best.pth
+    ./script_and_utils/config.py /script_and_utils/config.py
+    ./script_and_utils/dream_rnn_predictor_rest_api.py /script_and_utils/dream_rnn_predictor_rest_api.py
+    ./script_and_utils/error_checking_functions.py /script_and_utils/error_checking_functions.py
+    ./script_and_utils/predictor_content_handler.py /script_and_utils/predictor_content_handler.py
+    ./script_and_utils/predictor_help_message.json /script_and_utils/predictor_help_message.json
+    ./script_and_utils/schema_validation.py /script_and_utils/schema_validation.py
+    ../dream_rnn_environment.yml /dream_rnn_environment.yml
+
+%environment
+    # Prevent binding of host directories by default
+    export APPTAINER_NO_MOUNT="home,tmp,proc,sys,dev"
+    export LC_ALL=C
+    export PATH="/opt/conda/envs/dream-rest/bin:$PATH"
+    export LD_LIBRARY_PATH="/opt/conda/envs/dream-rest/lib:$LD_LIBRARY_PATH"
+
+%post
+
+    echo "Installing system dependencies..."
+    apt-get update && \
+    apt-get install -y --no-install-recommends wget bzip2 ca-certificates && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+    echo "Setting up Miniconda..."
+    mkdir -p /opt && \
+    wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
+    bash /tmp/miniconda.sh -b -p /opt/conda && \
+    rm -rf /tmp/miniconda.sh
+
+    echo "Initializing Conda..."
+    export PATH="/opt/conda/bin:$PATH"
+    . /opt/conda/etc/profile.d/conda.sh
+
+    echo "Setting solver to classic and disabling plugins..."
+    CONDA_NO_PLUGINS=true conda config --set solver classic
+
+    echo "Creating Conda environment 'dream-rest'..."
+    CONDA_NO_PLUGINS=true conda env create -f /dream_rnn_environment.yml
+
+    echo "Verifying Conda environment creation..."
+    if ! conda env list | grep -q 'dream-rest'; then
+        echo "Error: Conda environment 'dream-rest' was not created successfully."
+        exit 1
+    fi
+
+    echo "Removing any __pycache__ directories that snuck in..."
+    find /dream_rnn_script_and_utils /script_and_utils -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+    echo "Setting permissions..."
+    chmod -R 755 /dream_rnn_script_and_utils /script_and_utils /opt/conda
+    chmod +x /opt/conda/envs/dream-rest/bin/python
+
+    echo "Cleaning up temporary files..."
+    rm -rf /dream_rnn_environment.yml
+    conda clean --all --yes
+
+%runscript
+    export PATH="/opt/conda/envs/dream-rest/bin:$PATH"
+    exec python3 /script_and_utils/dream_rnn_predictor_rest_api.py "$@"
+
+%startscript
+    export PATH="/opt/conda/envs/dream-rest/bin:$PATH"
+    exec python3 /script_and_utils/dream_rnn_predictor_rest_api.py "$@"
+
+%labels
+    Author "Satyam Priyadarshi"
+    game_schema_version "1.0"
+    Description "A REST API DREAM-RNN Predictor for the Genomic API for Model Evaluation Framework. 
+    DREAM-optimized model is trained on Agarwal et al. (2025) Human K562 MPRA dataset."
+
+%help
+    This container for Predictor includes:
+    - A Flask-based REST API (`dream_rnn_predictor_rest_api.py`).
+    - Integrated Dream-RNN model with its dependencies and DREAM conda environment created using `dream_rnn_environment.yml`.
+    - Pre-trained model weights (`model_best.pth`) for predictions.
+    - Utility scripts for preprocessing and prediction.
+
+    Run the container
+    ```
+    apptainer run --nv --containall dream_rnn_predictor.sif HOST PORT
+    ```
+
+    Details:
+    - The container launches a Flask-based server to receive data via HTTP POST requests.
+    - Replace `HOST` and `PORT` with the server and port configuration for the evaluator to connect to.
+
+    API Endpoints:
+    - `/formats` - GET:  supported request and response formats
+    - `/help`    - GET:  predictor metadata and usage information
+    - `/predict` - POST: main endpoint for submitting prediction requests
+
+    Purpose:
+    - Facilitates genomic model evaluation and prediction using the DREAM-RNN model.
+    - It is designed to seamlessly integrate with other tools via API endpoints.
+
+    Example Command:
+    ```
+    apptainer run --nv --containall dream_rnn_predictor.sif 172.xx.xx.xxx 5000
+    ```
+
+    Arguments:
+    1. `HOST IP`: IP address or hostname of the Predictor server.
+    2. `PORT`   : Port number the Predictor is listening on.

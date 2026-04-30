@@ -12,11 +12,7 @@ This container for Predictor includes:
 
 We encourage using pre-built containers for this model that are hosted on Zenodo: <NEW_LINK_HERE>.
 
-### Build the container (SIF)
-
-```bash
-apptainer build predictor.sif predictor.def
-```
+If you want to build your own Predictor, refer to the documentation on [Building your own GAME Modules](https://genomic-api-for-model-evaluation-documentation.readthedocs.io/en/latest/Building_Modules/)
 
 ### Run the container
 

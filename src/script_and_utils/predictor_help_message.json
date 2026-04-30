@@ -1,8 +1,7 @@
 {
-  "model": "DREAMRNN",
-  "version": "1.0",
+  "model": "DREAM-RNN",
+  "version": "2.0",
   "publication" : "Rafi et. al, 2024",
-  "build_date": "November 27, 2025",
   "features": ["expression"],
   "cell_types" : ["K562"],
   "species": ["homo_sapiens"],
