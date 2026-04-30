@@ -1,6 +1,6 @@
 {
   "model": "DREAM-RNN",
-  "version": "2.0",
+  "game_schema_version": "1.0",
   "publication" : "Rafi et. al, 2024",
   "features": ["expression"],
   "cell_types" : ["K562"],

@@ -1,8 +1,13 @@
 # GAME DREAM-RNN Human K562 Predictor
 
-DREAM-RNN model [(Rafi et al. 2024, Nature Biotechnology)](https://www.nature.com/articles/s41587-024-02414-w) trained on MPRA data from Agarwal et. al 2023 and can be used for any sequence-to-expression predictions (single task).
+DREAM-RNN model [(Rafi et al. 2024, Nature Biotechnology)](https://www.nature.com/articles/s41587-024-02414-w) trained on MPRA data from [Agarwal et al. 2025](https://www.nature.com/articles/s41586-024-08430-9) for sequence-to-expression prediction (single task, K562 only).
 
-The DREAM-RNN Predictor can only return point expression predictions for K562 (Matcher is never used, and it will return K562 predictions regardless of the cell type requested). <<ADD information about `prediction_ranges` logic>>
+**The Predictor:**
+
+    - Returns `point` expression predictions only.
+    - Always predicts in K562 regardless of the `cell_type` requested (Matcher is not used; `cell_type_actual` is always `"K562"` in responses).
+    - Adds its own hardcoded 15bp upstream and 15bp downstream adapters internally -- these are part of the trained model's input and are not configurable.
+    - Reduces incoming requests to the model's 200bp input window using a multi-branch preprocessing pipeline (see [Section 2.2](#22-preprocessing-logic)).
 
 ## Important Links
 
@@ -10,8 +15,6 @@ The DREAM-RNN Predictor can only return point expression predictions for K562 (M
 - GAME Documentation: [ReadTheDocs](https://genomic-api-for-model-evaluation-documentation.readthedocs.io)
 - Pre-built DREAM-RNN container image: [Zenodo](<<ADD NEW LINK HERE>>)
 - To learn more about DREAM-RNN: [DREAM-RNN Human K562](https://github.com/de-Boer-Lab/random-promoter-dream-challenge-2022/tree/main/benchmarks/human)
-
----
 
 ---
 
@@ -23,7 +26,7 @@ This document outlines the structure of the API codebase for DREAM-RNN and how i
 
 ## **1. DREAM-RNN API Structure**
 
-The DREAM-RNN-API is organized as follows. The Predictor now utilizes a Flask application script and separates logic into distinct utility folders.
+The DREAM-RNN API is organized as follows. The Predictor uses a Flask application script and separates logic into distinct utility folders:
 
 ```bash
 DREAM_RNN_GAME/
@@ -40,12 +43,12 @@ DREAM_RNN_GAME/
     │   │   └── ... (optimizer, scheduler, metrics)
     │   └── prixfixe/                        # Model framework scripts
     └── script_and_utils/                    # API and Server logic
-        ├── config.py                        # Configuration script
+        ├── config.py                        # Predictor name + paths + wire formats
         ├── dream_rnn_predictor_rest_api.py  # Flask-based REST API script
-        ├── error_checking_functions.py      # Error handling
-        ├── predictor_content_handler.py     # Request processing logic
+        ├── error_checking_functions.py      # Error classes and request validation
+        ├── predictor_content_handler.py     # Request/response (de)serialization
         ├── predictor_help_message.json      # Help message file
-        └── schema_validation.py             # Input JSON validation
+        └── schema_validation.py             # Schema validation + preprocessing entry
 ```
 
 ---
@@ -56,36 +59,111 @@ DREAM_RNN_GAME/
 
 - **Purpose**: A Flask-based web server that listens for HTTP requests, validates inputs, runs the DREAM-RNN model, and returns structured JSON responses.
 - **Core Script**: `src/script_and_utils/dream_rnn_predictor_rest_api.py`.
-- **Supporting Scripts, Error Handling, Help Files**:
-  - `config.py`
-  - `schema_validation.py`
-  - `predictor_content_handler.py`
-  - `dream_rnn_preprocessing_utils.py`
-  - `dreamRNN_predict.py`
-  - `error_checking_functions.py`
-  - `predictor_help_message.json`.
-- [PrixFixe](https://github.com/de-Boer-Lab/random-promoter-dream-challenge-2022/blob/main/prixfixe/readme.MD) Framework.
-- **Key Features**:
-    1. **Dynamic Path Handling**:
-        - Uses `os.path.exists` to determine if the script is running inside the container.
-        - Adjusts the path to the DREAM-RNN model (`DREAM_DIR`) and helper files (`HELP_FILE`) accordingly.
-    2. **HTTP Server Setup**:
-        - **Flask Application**: Initializes a Flask web application that listens on a configurable `HOST` and `PORT` for incoming API requests.
-        - **API Endpoints**: Exposes dedicated endpoints for interaction: `POST /predict` for main inference, `GET /help` for metadata, and `GET /formats` for supported data types.
-        - **Standard Protocol**: Utilizes standard HTTP/1.1 for reliable data transmission, ensuring compatibility with standard HTTP clients.
-    3. **Request Validation**:
-        - Validates mandatory keys (`request`, `prediction_tasks`, etc.) and values in the incoming JSON request using error-checking functions.
-        - Returns error messages if any validation step fails.
-    4. **Prediction Workflow**:
-        - Extracts and validates sequences and prediction tasks.
-        - Prepares and makes a function call to the DREAM-RNN model using `predict_dream_rnn`.
-        - Generates a structured JSON response with:
-            - Metadata (`type_actual`, `cell_type_actual`, etc.)
-            - Prediction results
-    5. **Dynamic Help Handling**:
-        - Returns a help message when the `/help` endpoint is accessed, loading information from the `HELP FILE`.
-    6. **Data Transfer**:
-        - Sends error messages, help content, or predictions back to the Evaluator API as standard JSON HTTP responses.
+- **Supporting Scripts**:
+  - `config.py` &mdash; predictor name, paths, supported wire formats
+  - `schema_validation.py` &mdash; schema validation entry + preprocessing dispatch
+  - `predictor_content_handler.py` &mdash; request decode / response encode
+  - `error_checking_functions.py` &mdash; error classes (`BadRequestError`, `PredictionFailedError`, `ServerError`) and per-field validators
+  - `dream_rnn_preprocessing_utils.py` &mdash; sequence preprocessing pipeline
+  - `dreamRNN_predict.py` &mdash; model inference
+  - `predictor_help_message.json` &mdash; help endpoint contents
+- [PrixFixe](https://github.com/de-Boer-Lab/random-promoter-dream-challenge-2022/blob/main/prixfixe/readme.MD) Framework &mdash; the underlying neural network architecture (BHI first/core blocks + Autosome final block).
+
+### **2.1 Key Features**
+ 
+1. **Versioned Predictor Name**:
+    - Inside the container, the predictor name is auto-versioned with the Apptainer build timestamp: `DREAM-RNN_Human_K562_YYYYMMDD-HHMMSS_TZ` (e.g. `DREAM-RNN_Human_K562_20260407-140628_PDT`).
+    - Outside the container (dev mode), it falls back to `DREAM-RNN_Human_K562_dev`.
+    - The build timestamp is read from `/.singularity.d/labels.json` at startup and embedded in every response (`predictor_name` field). This makes it possible to trace evaluation results back to the exact container build that produced them.
+2. **Dynamic Path Handling**:
+    - `config.py` uses `os.path.exists('/.singularity.d')` to determine whether the script is running inside the container.
+    - Adjusts `DREAM_DIR` (model + preprocessing utilities) and `HELP_FILE` accordingly.
+3. **HTTP Server Setup**:
+    - **Flask Application**: Initializes a Flask web application that listens on a configurable `HOST` and `PORT` for incoming API requests.
+    - **API Endpoints**: Exposes dedicated endpoints: `POST /predict` for inference, `GET /help` for metadata, and `GET /formats` for supported wire formats.
+    - **Wire Format**: JSON only (`application/json` for both request and response).
+4. **Request Validation**:
+    - Validates mandatory top-level keys (`readout`, `prediction_tasks`, `sequences`) and per-task keys (`name`, `type`, `cell_type`, `species`).
+    - Rejects unsupported request features at the API edge before model inference (see [Section 2.3](#23-supported-request-features)).
+    - Returns standardized error responses (400, 422, 500) keyed by the violation category.
+5. **Prediction Workflow**:
+    - Decodes the request, validates schema, preprocesses sequences (see [Section 2.2](#22-preprocessing-logic)).
+    - Calls `predict_dream_rnn(sequences, prediction_ranges, upstream_seq, downstream_seq, include_rev=True)`.
+    - Assembles a structured JSON response with metadata (`type_actual`, `cell_type_actual`, etc.) and predictions per task.
+    - Applies scaling: model output is natively log2; if `scale: linear` is requested, predictions are exponentiated (`2^x`).
+6. **Help Endpoint**:
+    - Returns the contents of `predictor_help_message.json` when `/help` is queried.
+
+### **2.2 Preprocessing Logic**
+
+For each sequence the predictor receives, the input is reduced to a 200bp probe before adapters are added:
+
+```text
+1. If constant flanks (upstream_seq / downstream_seq) provided:
+   1.1. probe length <= target_length (200bp):
+        Pad with biological flank context (NOT Ns)
+          - Take tail of upstream_seq + probe + head of downstream_seq
+          - If flanks too short to fill target_length, fall back to N-padding
+        prediction_ranges IGNORED
+   1.2. probe length > target_length:
+        Center-crop probe to target_length
+        prediction_ranges IGNORED
+
+2. If no constant flanks:
+   2.1. probe length <= target_length:
+        Use the probe as-is, left-pad with Ns to target_length
+        prediction_ranges IGNORED (probe is already the data we have)
+   2.2. probe length > target_length AND prediction_ranges provided:
+        Anchor target_length window MPRA_PROBE_TO_TSS_OFFSET (145bp) upstream
+        of pr_start (TSS).
+          start = max(0, pr_start - target_length - 145)
+          end   = min(start + target_length, len(seq))
+        Clamping start to 0 pulls a full target_length window of real sequence
+        rather than synthesizing Ns to preserve a precise TSS offset-- DREAM-RNN
+        has no explicit TSS-distance feature, so real sequence is strictly
+        more useful than Ns at a specific offset.
+        Left-pad with Ns only if the sequence itself is shorter than target_length.
+   2.3. probe length > target_length AND no prediction_ranges:
+        Center-crop to target_length
+
+3. Add hardcoded DREAM-RNN adapters (15bp upstream + 15bp downstream)
+4. One-hot encode the final sequence
+```
+ 
+**Key constants** (defined in `dream_rnn_preprocessing_utils.py` and `dreamRNN_predict.py`):
+ 
+- `MPRA_PROBE_TO_TSS_OFFSET = 145` &mdash; assay-specific offset; in Agarwal-style lentiMPRA constructs, the regulatory probe ends exactly 145bp upstream of the EGFP TSS.
+- `TARGET_LENGTH = 200` &mdash; model input length before adapters.
+- `upstream_adapter_seq = "AGGACCGGATCAACT"` (15bp).
+- `downstream_adapter_seq = "CATTGCGTGAACCGA"` (15bp).
+### **2.3 Supported Request Features**
+ 
+| Feature | Support | Notes |
+|---|---|---|
+| `readout = point` | ✅ | Only supported readout |
+| `readout = track` / `interaction_matrix` | ❌ | Rejected with `bad_prediction_request` (400) |
+| `type = expression` | ✅ | |
+| `type = expression_*` (e.g. `expression_mRNA`, `expression_pol2`) | ✅ | All `expression_*` subtypes accepted |
+| `type = binding_*`, `conformation_*`, `accessibility` | ❌ | Rejected with `bad_prediction_request` (400) |
+| `species = homo_sapiens` | ✅ | |
+| Other species | ❌ | Rejected with `prediction_request_failed` (422) |
+| `scale = log` (default) | ✅ | Model output is natively log2 |
+| `scale = linear` | ✅ | Output is exponentiated (`2^x`) |
+| `cell_type` | Logged but ignored | Always returns K562 predictions |
+| `upstream_seq` / `downstream_seq` | ✅ | Used as biological flank context for short probes |
+| `prediction_ranges` | ✅ (conditional) | Used in Branch 2.2 of preprocessing only &mdash; ignored when flanks are provided or probes ≤ 200bp |
+
+**Multi-task request behavior**: DREAM-RNN currently rejects an entire request if *any* task has an unsupported type, species, or scale. No model inference runs in this case &mdash; the request fails at validation before any compute is spent.
+
+### **2.4 Error Handling**
+
+| Status | Error key | Triggers |
+|---|---|---|
+| 400 | `bad_prediction_request` | Malformed JSON, missing mandatory keys, unsupported readout/type, invalid prediction_ranges format |
+| 422 | `prediction_request_failed` | Sequence contains invalid characters, empty sequence, unsupported species/scale, prediction_range out of bounds |
+| 500 | `server_error` | Model load failure, unexpected internal error |
+
+---
 
 ---
 
@@ -136,6 +214,7 @@ The API JSON format wraps predictions with metadata to describe tasks, cell type
 The wrapper allows for predictions to be made by the model when the `predict_dream_rnn(sequences, include_rev=True)` is called by the Predictor API, returning predictions in a dictionary format, such that they can just be appended into the response as per the API JSON schema.
 
 ---
+---
 
 ## **3. Configuring and Running the API** (Similar to [Basic Instructions for Test Evaluator and Predictor](https://github.com/de-Boer-Lab/Genomic-API-for-Model-Evaluation/tree/main/src/training_examples/Apptainer/Test_Evaluator_Predictor))
 
@@ -164,69 +243,54 @@ Definition files provide a declarative way to define:
 #### **Predictor API Container**
 
 1. **Base Image**:
-    - `python:3.13-slim` is chosen for its lightweight nature and Python-specific optimizations.
-    - This base image minimizes overhead while supporting Python dependencies.
+    - `python:3.13-slim` provides a minimal Debian base. The container installs Miniconda and creates a `dream-rest` conda environment from `dream_rnn_environment.yml`, which is what the predictor actually runs against — the bootstrap Python is unused at runtime.
 2. **File Inclusions**:
-    - **Core Script**: `dream_rnn_predictor_rest_api.py`, responsible for handling HTTP requests
-    - **Model-Related Files**:
-        - `dreamRNN_predict.py`: Handles model loading and predictions.
-        - Pre-trained model weights (`model_best.pth`).
-    - **Supporting Scripts, Error Handling, Help Files**:
-        - `dream_rnn_preprocessing_utils.py` for general sequence preprocessing functions
-        - `error_checking_functions.py` for error handling
-        - `predictor_content_handler.py` for serialization support
-        - `schema_validation.py` for validating incoming JSON request payloads against the API schema
-        - `predictor_help_message.json` to provide metadata about the API
-    - [PrixFixe](https://github.com/de-Boer-Lab/random-promoter-dream-challenge-2022/blob/main/prixfixe/readme.MD) **Framework**: Essential for the DREAM-RNN prediction pipeline.
+    - **Core API Scripts** in `/script_and_utils/`: `config.py`, `dream_rnn_predictor_rest_api.py`, `error_checking_functions.py`, `predictor_content_handler.py`, `schema_validation.py`, `predictor_help_message.json`.
+    - **Model-Related Files** in `/dream_rnn_script_and_utils/`: `dreamRNN_predict.py`, `dream_rnn_preprocessing_utils.py`, the pre-trained weights (`model_best.pth`), and the [PrixFixe](https://github.com/de-Boer-Lab/random-promoter-dream-challenge-2022/blob/main/prixfixe/readme.MD) framework directory.
 3. **Environment Variables**:
-    - `PATH` and `LD_LIBRARY_PATH` ensure the `dream` Conda environment is used during runtime, isolating dependencies required for prediction tasks.
+    - `PATH` and `LD_LIBRARY_PATH` ensure the `dream-rest` Conda environment is used during runtime.
+    - `APPTAINER_NO_MOUNT="home,tmp,proc,sys,dev"` to provide a safe default that prevents common host directories from being automatically mounted.
 4. **Runtime Needs**:
-    - No mounting is required as the Predictor container is pre-packaged with all scripts, dependencies, and data files.
-    - This design simplifies deployment, making the container self-contained and portable.
+    - No mounting of input data is required — the Predictor is self-contained (model weights and code are baked into the container). The only inputs come over HTTP from the Evaluator.
 
 ---
 
 ### **3.2. Best Practices for Container Isolation**
-
-For maximum security and reproducibility, it is highly recommended to run both containers with the `--containall` flag.
-
-This flag creates a strictly isolated environment, preventing the container from accessing host files (like `/home`, `/tmp`) or external environment variables. This practice is critical for reproducible run as it ensures the container execution is not accidentally influenced by the host system.
-
-**Layered Isolation Approach**
-    - Definition file (`.def`): The containers are built with `APPTAINER_NO_MOUNT` configurations to provide a safe default. This setting is intended to prevent common host directories from being automatically mounted, making the container inherently more isolated by design.
-    - Runtime (`--containall`): While defaults are useful, the `--containall` flag provides complete, enforced isolation at runtime. It blocks all unexpected host directories, scrubs environment variables, and creates separate IPC/PID namespaces. This is the best practice to guarantee a run is entirely isolated.
-
-**Note:** Because `--containall` blocks access to host files by default, the `-B` (bind) flag must be used to explicitly allow the container to read inputs and write outputs.
-
-```bash
-# -B is required to give access to specific folders when using --containall
-apptainer run --containall -B /local/data:/data my_container.sif ...
-```
+ 
+For maximum security and reproducibility, run the container with the `--containall` flag.
+ 
+This flag creates a strictly isolated environment, preventing the container from accessing host files (like `/home`, `/tmp`) or external environment variables. This practice is critical for reproducible runs as it ensures the container execution is not accidentally influenced by the host system.
+ 
+**Layered Isolation Approach**:
+ 
+- **Definition file (`.def`)**: The container is built with `APPTAINER_NO_MOUNT` configurations to provide a safe default. This setting prevents common host directories from being automatically mounted, making the container inherently more isolated by design.
+- **Runtime (`--containall`)**: While defaults are useful, the `--containall` flag provides complete, enforced isolation at runtime. It blocks all unexpected host directories, scrubs environment variables, and creates separate IPC/PID namespaces.
+**Note:** The DREAM-RNN Predictor is fully self-contained and does not require `-B` bind mounts — all model weights and scripts live inside the container.
 
 ---
 
 ### **3.3. Running the Predictor API**
 
 1. **Start the Predictor API container**
-
-    The Predictor API must be running first since it listens for incoming connections from the Evaluator. Use the following command to start the Predictor:
-
+    The Predictor API must be running first since it listens for incoming connections from the Evaluator. Use the following command:
     ```bash
     apptainer run --nv --containall dream_rnn_predictor.sif HOST PORT
     ```
-
-    - `-nv`: Enables NVIDIA GPU support (required for efficient DREAM-RNN inference).
-    - Replace `HOST` with the server's IP, which can be found using `hostname`, followed by a `-i` or `-I` flag , and `PORT` with the desired [port number](https://www.geeksforgeeks.org/50-common-ports-you-should-know/).
-    - The Predictor container will bind to the specified host and port and expose endpoints.
-    - Ensure that the port (e.g., `5000`) is open and not blocked by any firewall or network policies. Ports above 1024 are usually free to use on most computers/servers.  
-
+ 
+    - `--nv`: Enables NVIDIA GPU support (recommended for efficient DREAM-RNN inference; falls back to CPU if no GPU is available).
+    - Replace `HOST` with the server's IP, which can be found using `hostname` followed by a `-i` or `-I` flag, and `PORT` with the desired [port number](https://www.geeksforgeeks.org/50-common-ports-you-should-know/).
+    - The Predictor container will bind to the specified host and port and expose the `/predict`, `/help`, and `/formats` endpoints.
+    - Ensure that the port (e.g., `5000`) is open and not blocked by any firewall or network policies. Ports above 1024 are usually free to use on most computers/servers.
 2. **Validate the server**
     - Ensure it listens on the specified host and port.
-    - Example:
+    - On startup you should see something like:
 
-        ```bash
-        * Running on http://172.16.47.244:5000/ (Press CTRL+C to quit)
-        ```
+    ```bash
+    DREAM-RNN_Human_K562_20260407-140628_PDT Predictor is running on http://172.16.47.244:5000
+    * Running on http://172.16.47.244:5000/ (Press CTRL+C to quit)
+    ```
+
+    The first line confirms both the versioned predictor name (which will appear in every response) and the listening address.
 
 ---
 
@@ -291,6 +355,4 @@ apptainer run --containall -B /local/data:/data my_container.sif ...
     }
     ```
 
----
-
----
+The `predictor_name` in the response matches the container build timestamp, allowing evaluation results to be traced back to a specific build.
