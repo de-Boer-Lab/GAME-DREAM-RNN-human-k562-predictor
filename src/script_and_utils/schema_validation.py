@@ -35,7 +35,7 @@ def validate_request_payload(payload):
 
     if 'prediction_ranges' in payload:
         errors = check_seq_ids(payload['prediction_ranges'], payload['sequences'], errors)
-        errors = check_prediction_ranges(payload['prediction_ranges'], payload['sequences'], errors)
+        errors = check_prediction_ranges(payload['prediction_ranges'], errors)
 
     if 'upstream_seq' in payload:
         errors = check_key_values_upstream_flank(payload['upstream_seq'], errors)
@@ -48,7 +48,7 @@ def validate_request_payload(payload):
 
 def preprocess_data(payload):
     """
-    Handles data preprocessing, like applying prediction ranges and checking sequence specs.
+    Handles data preprocessing, like checking sequence specs, readout type, species, etc.
     
     Completes model-specific error checking.
 
@@ -59,20 +59,14 @@ def preprocess_data(payload):
     # Model-specific: Note that even if flanking sequences are present in the request,
     # they are not used by this model
     if 'upstream_seq' in payload or 'downstream_seq' in payload:
-        print("INFO: DREAM-RNN has adapter sequences hardcoded and does not use flanking sequences from the request.")
+        print("INFO: Upstream/Downstream sequences found. They will be used to construct the biological context before cropping/padding.")
 
-    # Apply prediction_ranges if provided
-    if 'prediction_ranges' in payload:
-        for seq_id, pr in payload['prediction_ranges'].items():
-            if pr: # Only process non-empty ranges
-                start, end = pr
-                # Slice the sequence. `prediction_range` is start, end inclusive
-                sequences[seq_id] = sequences[seq_id][start:end+1]
-                print(f"Sequence '{seq_id}' trimmed to prediction range [{start}, {end}].")
-    
     # Check that the final sequences meet model specifications.
     # Since this is model-specific, it utilizes `PredictionFailedError`.
-    errors = {'prediction_request_failed': []}
+    errors = {
+        'bad_prediction_request': [],
+        'prediction_request_failed': []
+        }
     errors = check_seqs_specifications(sequences, errors)
     
     # Model-specific: Readout type check

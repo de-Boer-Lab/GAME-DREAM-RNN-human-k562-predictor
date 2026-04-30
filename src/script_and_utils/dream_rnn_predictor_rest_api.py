@@ -1,42 +1,19 @@
 '''DREAM-RNN Predictor Utilizing Flask'''
-import os
 import sys
 import json
 from flask import Flask
 
+from config import DREAM_DIR, HELP_FILE, PREDICTOR_NAME, SUPPORTED_REQUEST_FORMATS, SUPPORTED_RESPONSE_FORMATS
 from error_checking_functions import *
 from schema_validation import *
 from predictor_content_handler import decode_request, encode_response
 
-# Get the absolute path of the script's directory
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Hardcode name of this Predictor. It will be added to ALL responses.
-PREDICTOR_NAME = "DREAM-RNN_Human_K562"
-
-# Determine if running inside a container or not
-if os.path.exists('/.singularity.d'):
-    # Running inside the container
-    print("Running inside the container...🥡")
-    DREAM_DIR = "/dream_rnn_script_and_utils"
-    HELP_FILE = "/script_and_utils/predictor_help_message.json"
-else:
-    # Running outside the container
-    print("Running outside the container...📋")
-    PREDICTOR_CONTAINER_DIR = os.path.dirname(SCRIPT_DIR)
-    DREAM_DIR = os.path.join(PREDICTOR_CONTAINER_DIR, "dream_rnn_script_and_utils")
-    HELP_FILE = os.path.join(SCRIPT_DIR, 'predictor_help_message.json')
-
 # Add DREAM_DIR to the Python path
 if DREAM_DIR not in sys.path:
-    sys.path.insert(0, DREAM_DIR)
+    sys.path.append(DREAM_DIR)
 
 # Import from the dreamRNN_predict script
 from dreamRNN_predict import predict_dream_rnn
-
-# ------ Configuration for Wire-Format ------
-SUPPORTED_REQUEST_FORMATS = [fmt.lower() for fmt in ["application/json"]]
-SUPPORTED_RESPONSE_FORMATS = [fmt.lower() for fmt in ["application/json"]]
 
 # --- Flask App and Central Error Handler ---
 app = Flask(__name__)
@@ -46,7 +23,7 @@ app.json.sort_keys = False
 
 def create_error_response(error_key, messages, status_code):
     """ 
-    Formats error response into a standarized JSON structure.
+    Formats error response into a standardized JSON structure.
     
     Args:
         error_key (str): The category of the error (e.g. 'bad_prediction_request', 'prediction_request_failed').
@@ -127,9 +104,15 @@ def predict():
         # return jsonify({"seq1": 0.98})
         # Preprocess the data using the imported function
         sequences = preprocess_data(evaluator_request)
-        
+
+        # ADDITION: Since we actually care about pred ranges, and upstream and downstream seqs
+        prediction_ranges = evaluator_request.get("prediction_ranges")
+        upstream_seq = evaluator_request.get("upstream_seq")
+        downstream_seq = evaluator_request.get("downstream_seq")
+
         # Run Model Inference
-        model_predictions = predict_dream_rnn(sequences, include_rev=True)
+        # ADDITION: vvv 3 new args for predict dream rnn
+        model_predictions = predict_dream_rnn(sequences, prediction_ranges, upstream_seq, downstream_seq, include_rev=True)
         
         # Assemble the response
         json_return = {'prediction_tasks': []}
