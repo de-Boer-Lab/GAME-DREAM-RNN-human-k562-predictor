@@ -5,7 +5,7 @@ DREAM-RNN model [(Rafi et al. 2024, Nature Biotechnology)](https://www.nature.co
 **The Predictor:**
 
     - Returns `point` expression predictions only.
-    - Always predicts in K562 regardless of the `cell_type` requested (Matcher is not used; `cell_type_actual` is always `"K562"` in responses).
+    - Always predicts for K562 regardless of the `cell_type` requested (Matcher is not used; `cell_type_actual` is always `"K562"` in responses).
     - Adds its own hardcoded 15bp upstream and 15bp downstream adapters internally -- these are part of the trained model's input and are not configurable.
     - Reduces incoming requests to the model's 200bp input window using a multi-branch preprocessing pipeline (see [Section 2.2](#22-preprocessing-logic)).
 
@@ -18,9 +18,13 @@ DREAM-RNN model [(Rafi et al. 2024, Nature Biotechnology)](https://www.nature.co
 
 ---
 
-## **Overview**
+## **Overview and quick start**
 
 This document outlines the structure of the API codebase for DREAM-RNN and how it integrates with the containerized setup. The architecture is designed as a containerized microservice that communicates via HTTP REST endpoints.
+
+```bash
+apptainer run --nv --containall dream_rnn_predictor.sif HOST PORT
+```
 
 ---
 
@@ -115,8 +119,8 @@ For each sequence the predictor receives, the input is reduced to a 200bp probe 
         prediction_ranges IGNORED (probe is already the data we have)
    2.2. probe length > target_length AND prediction_ranges provided:
         Anchor target_length window MPRA_PROBE_TO_TSS_OFFSET (145bp) upstream
-        of pr_start (TSS).
-          start = max(0, pr_start - target_length - 145)
+        of the prediction range start (TSS).
+          start = max(0, prediction_range_start - target_length - 145)
           end   = min(start + target_length, len(seq))
         Clamping start to 0 pulls a full target_length window of real sequence
         rather than synthesizing Ns to preserve a precise TSS offset-- DREAM-RNN
@@ -132,7 +136,7 @@ For each sequence the predictor receives, the input is reduced to a 200bp probe 
  
 **Key constants** (defined in `dream_rnn_preprocessing_utils.py` and `dreamRNN_predict.py`):
  
-- `MPRA_PROBE_TO_TSS_OFFSET = 145` &mdash; assay-specific offset; in Agarwal-style lentiMPRA constructs, the regulatory probe ends exactly 145bp upstream of the EGFP TSS.
+- `MPRA_PROBE_TO_TSS_OFFSET = 145` &mdash; assay-specific offset; in Agarwal-style lentiMPRA constructs, the regulatory probe ends exactly 145bp upstream of the EGFP TSS in the full construct.
 - `TARGET_LENGTH = 200` &mdash; model input length before adapters.
 - `upstream_adapter_seq = "AGGACCGGATCAACT"` (15bp).
 - `downstream_adapter_seq = "CATTGCGTGAACCGA"` (15bp).
@@ -194,11 +198,11 @@ The API JSON format wraps predictions with metadata to describe tasks, cell type
             "species_requested": "homo_sapiens",
             "species_actual": "homo_sapiens",
             "predictions": {
-                "seq1": 0.3173099458217621,
-                "seq2": 0.33908841013908386,
-                "random_seq": 0.37649109959602356,
-                "enhancer": 0.37649109959602356,
-                "control": 0.37649109959602356
+                "seq1": [0.3173099458217621],
+                "seq2": [0.33908841013908386],
+                "random_seq": [0.37649109959602356],
+                "enhancer": [0.37649109959602356],
+                "control": [0.37649109959602356]
             }
         }
     ]
@@ -344,11 +348,11 @@ This flag creates a strictly isolated environment, preventing the container from
             "species_requested": "homo_sapiens",
             "species_actual": "homo_sapiens",
             "predictions": {
-                "7:70038969:G:T:A:wC": -0.4900762140750885,
-                "1:192696196:C:T:A:wC": -0.42054876685142517,
-                "1:211209457:C:T:A:wC": -0.251442551612854,
-                "15:89574440:GT:G:A:wC": 1.1541708707809448,
-                "15:89574440:GT:G:R:wC": 1.1637296676635742
+                "7:70038969:G:T:A:wC": [-0.4900762140750885],
+                "1:192696196:C:T:A:wC": [-0.42054876685142517],
+                "1:211209457:C:T:A:wC": [-0.251442551612854],
+                "15:89574440:GT:G:A:wC": [1.1541708707809448],
+                "15:89574440:GT:G:R:wC": [1.1637296676635742]
                 }
             }
         ]
