@@ -198,11 +198,11 @@ The API JSON format wraps predictions with metadata to describe tasks, cell type
             "species_requested": "homo_sapiens",
             "species_actual": "homo_sapiens",
             "predictions": {
-                "seq1": [0.3173099458217621],
-                "seq2": [0.33908841013908386],
-                "random_seq": [0.37649109959602356],
-                "enhancer": [0.37649109959602356],
-                "control": [0.37649109959602356]
+                "seq1": 0.3173099458217621,
+                "seq2": 0.33908841013908386,
+                "random_seq": 0.37649109959602356,
+                "enhancer": 0.37649109959602356,
+                "control": 0.37649109959602356
             }
         }
     ]
@@ -348,11 +348,11 @@ This flag creates a strictly isolated environment, preventing the container from
             "species_requested": "homo_sapiens",
             "species_actual": "homo_sapiens",
             "predictions": {
-                "7:70038969:G:T:A:wC": [-0.4900762140750885],
-                "1:192696196:C:T:A:wC": [-0.42054876685142517],
-                "1:211209457:C:T:A:wC": [-0.251442551612854],
-                "15:89574440:GT:G:A:wC": [1.1541708707809448],
-                "15:89574440:GT:G:R:wC": [1.1637296676635742]
+                "7:70038969:G:T:A:wC": -0.4900762140750885,
+                "1:192696196:C:T:A:wC": -0.42054876685142517,
+                "1:211209457:C:T:A:wC": -0.251442551612854,
+                "15:89574440:GT:G:A:wC": 1.1541708707809448,
+                "15:89574440:GT:G:R:wC": 1.1637296676635742
                 }
             }
         ]
