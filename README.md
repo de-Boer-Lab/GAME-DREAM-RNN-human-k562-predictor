@@ -5,7 +5,7 @@ DREAM-RNN model [(Rafi et al. 2024, Nature Biotechnology)](https://www.nature.co
 **The Predictor:**
 
     - Returns `point` expression predictions only.
-    - Always predicts in K562 regardless of the `cell_type` requested (Matcher is not used; `cell_type_actual` is always `"K562"` in responses).
+    - Always predicts for K562 regardless of the `cell_type` requested (Matcher is not used; `cell_type_actual` is always `"K562"` in responses).
     - Adds its own hardcoded 15bp upstream and 15bp downstream adapters internally -- these are part of the trained model's input and are not configurable.
     - Reduces incoming requests to the model's 200bp input window using a multi-branch preprocessing pipeline (see [Section 2.2](#22-preprocessing-logic)).
 
@@ -18,9 +18,13 @@ DREAM-RNN model [(Rafi et al. 2024, Nature Biotechnology)](https://www.nature.co
 
 ---
 
-## **Overview**
+## **Overview and quick start**
 
 This document outlines the structure of the API codebase for DREAM-RNN and how it integrates with the containerized setup. The architecture is designed as a containerized microservice that communicates via HTTP REST endpoints.
+
+```bash
+apptainer run --nv --containall dream_rnn_predictor.sif HOST PORT
+```
 
 ---
 
@@ -115,8 +119,8 @@ For each sequence the predictor receives, the input is reduced to a 200bp probe 
         prediction_ranges IGNORED (probe is already the data we have)
    2.2. probe length > target_length AND prediction_ranges provided:
         Anchor target_length window MPRA_PROBE_TO_TSS_OFFSET (145bp) upstream
-        of pr_start (TSS).
-          start = max(0, pr_start - target_length - 145)
+        of the prediction range start (TSS).
+          start = max(0, prediction_range_start - target_length - 145)
           end   = min(start + target_length, len(seq))
         Clamping start to 0 pulls a full target_length window of real sequence
         rather than synthesizing Ns to preserve a precise TSS offset-- DREAM-RNN
@@ -132,7 +136,7 @@ For each sequence the predictor receives, the input is reduced to a 200bp probe 
  
 **Key constants** (defined in `dream_rnn_preprocessing_utils.py` and `dreamRNN_predict.py`):
  
-- `MPRA_PROBE_TO_TSS_OFFSET = 145` &mdash; assay-specific offset; in Agarwal-style lentiMPRA constructs, the regulatory probe ends exactly 145bp upstream of the EGFP TSS.
+- `MPRA_PROBE_TO_TSS_OFFSET = 145` &mdash; assay-specific offset; in Agarwal-style lentiMPRA constructs, the regulatory probe ends exactly 145bp upstream of the EGFP TSS in the full construct.
 - `TARGET_LENGTH = 200` &mdash; model input length before adapters.
 - `upstream_adapter_seq = "AGGACCGGATCAACT"` (15bp).
 - `downstream_adapter_seq = "CATTGCGTGAACCGA"` (15bp).
