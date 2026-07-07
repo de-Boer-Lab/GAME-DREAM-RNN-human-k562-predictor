@@ -13,7 +13,7 @@ DREAM-RNN model [(Rafi et al. 2024, Nature Biotechnology)](https://www.nature.co
 
 - To learn more about the GAME Framework ([Main GAME Repository](https://github.com/de-Boer-Lab/Genomic-API-for-Model-Evaluation), [preprint](https://www.biorxiv.org/content/10.1101/2025.07.04.663250v1.full))
 - GAME Documentation: [ReadTheDocs](https://genomic-api-for-model-evaluation-documentation.readthedocs.io)
-- Pre-built DREAM-RNN container image: [Zenodo](<<ADD NEW LINK HERE>>)
+- Pre-built DREAM-RNN container image: [Hugging Face](https://huggingface.co/datasets/deBoerLab/DREAMRNN_Predictor_GAME)
 - To learn more about DREAM-RNN: [DREAM-RNN Human K562](https://github.com/de-Boer-Lab/random-promoter-dream-challenge-2022/tree/main/benchmarks/human)
 
 ---
