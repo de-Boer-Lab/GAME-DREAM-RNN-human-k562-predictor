@@ -110,14 +110,35 @@ def predict():
         upstream_seq = evaluator_request.get("upstream_seq")
         downstream_seq = evaluator_request.get("downstream_seq")
 
-        # Run Model Inference
+        # Run Model Inference (only if at least one task is one DREAM-RNN can perform)
         # ADDITION: vvv 3 new args for predict dream rnn
-        model_predictions = predict_dream_rnn(sequences, prediction_ranges, upstream_seq, downstream_seq, include_rev=True)
+        if any(unsupported_task_reason(task) is None for task in evaluator_request['prediction_tasks']):
+            model_predictions = predict_dream_rnn(sequences, prediction_ranges, upstream_seq, downstream_seq, include_rev=True)
+        else:
+            model_predictions = {}
         
         # Assemble the response
         json_return = {'prediction_tasks': []}
         for task in evaluator_request['prediction_tasks']:
             
+            # Tasks DREAM-RNN cannot perform (unsupported species/type) were not predicted:
+            # they are returned with null *_actual keys and an error object instead.
+            unsupported_reason = unsupported_task_reason(task)
+            if unsupported_reason:
+                json_return['prediction_tasks'].append({
+                    'name': task['name'],
+                    'type_requested': task['type'],
+                    'type_actual': None,
+                    'cell_type_requested': task['cell_type'],
+                    'cell_type_actual': None,
+                    'scale_prediction_requested': task.get('scale'),
+                    'scale_prediction_actual': None,
+                    'species_requested': task['species'],
+                    'species_actual': None,
+                    'predictions': {"error": [{"prediction_request_failed": unsupported_reason}]}
+                })
+                continue
+
             # Scaling
             requested_scale = task.get('scale')
             

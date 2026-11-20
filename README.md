@@ -88,12 +88,12 @@ DREAM_RNN_GAME/
     - **Wire Format**: JSON only (`application/json` for both request and response).
 4. **Request Validation**:
     - Validates mandatory top-level keys (`readout`, `prediction_tasks`, `sequences`) and per-task keys (`name`, `type`, `cell_type`, `species`).
-    - Rejects unsupported request features at the API edge before model inference (see [Section 2.3](#23-supported-request-features)).
+    - Rejects an unsupported `readout` at the API edge before model inference, and returns tasks with an unsupported `species` or `type` as individual failed tasks (see [Section 2.3](#23-supported-request-features)).
     - Returns standardized error responses (400, 422, 500) keyed by the violation category.
 5. **Prediction Workflow**:
     - Decodes the request, validates schema, preprocesses sequences (see [Section 2.2](#22-preprocessing-logic)).
-    - Calls `predict_dream_rnn(sequences, prediction_ranges, upstream_seq, downstream_seq, include_rev=True)`.
-    - Assembles a structured JSON response with metadata (`type_actual`, `cell_type_actual`, etc.) and predictions per task.
+    - Calls `predict_dream_rnn(sequences, prediction_ranges, upstream_seq, downstream_seq, include_rev=True)` when at least one task can be performed.
+    - Assembles a structured JSON response with metadata (`type_actual`, `cell_type_actual`, etc.) and predictions per task (or an error object for a task that cannot be performed).
     - Applies scaling: model output is natively log2; if `scale: linear` is requested, predictions are exponentiated (`2^x`).
 6. **Help Endpoint**:
     - Returns the contents of `predictor_help_message.json` when `/help` is queried.
@@ -148,23 +148,24 @@ For each sequence the predictor receives, the input is reduced to a 200bp probe 
 | `readout = track` / `interaction_matrix` | ❌ | Rejected with `bad_prediction_request` (400) |
 | `type = expression` | ✅ | |
 | `type = expression_*` (e.g. `expression_mRNA`, `expression_pol2`) | ✅ | All `expression_*` subtypes accepted |
-| `type = binding_*`, `conformation_*`, `accessibility` | ❌ | Rejected with `bad_prediction_request` (400) |
-| `species = homo_sapiens` | ✅ | |
-| Other species | ❌ | Rejected with `prediction_request_failed` (422) |
+| `type = binding_*`, `conformation_*`, `accessibility` | ❌ | That task fails with `prediction_request_failed` (other tasks are still returned; see [Section 4.3](#43-tasks-that-cannot-be-performed)) |
+| `species = homo_sapiens` | ✅ | `species` is the species of the cells in which the experiment was performed. `species_actual` is `homo_sapiens`, the species DREAM-RNN predicts for |
+| Other species | ❌ | That task fails with `prediction_request_failed` and `species_actual: null` (other tasks are still returned) |
 | `scale = log` (default) | ✅ | Model output is natively log2 |
 | `scale = linear` | ✅ | Output is exponentiated (`2^x`) |
 | `cell_type` | Logged but ignored | Always returns K562 predictions |
 | `upstream_seq` / `downstream_seq` | ✅ | Used as biological flank context for short probes |
-| `prediction_ranges` | ✅ (conditional) | Used in Branch 2.2 of preprocessing only &mdash; ignored when flanks are provided or probes ≤ 200bp |
+| `prediction_ranges` | ✅ (conditional) | Used in Branch 2.2 of preprocessing only &mdash; ignored when flanks are provided or probes ≤ 200bp. Ranges are 0-indexed and half-open (`[start, end)`, like Python slicing) and `start` must be strictly less than `end`; every non-empty range is validated, including ones that end up ignored |
 
-**Multi-task request behavior**: DREAM-RNN currently rejects an entire request if *any* task has an unsupported type, species, or scale. No model inference runs in this case &mdash; the request fails at validation before any compute is spent.
+**Multi-task request behavior**: a request is rejected as a whole (before any model inference) only if it is invalid (malformed JSON, missing keys, an unrecognised `type` or `scale` value, bad `prediction_ranges`, invalid or empty sequences) or if its `readout` is not `point`. A task with an unsupported `species` or `type` does not fail the request: it is returned as a failed task (HTTP 200) and the other tasks are still predicted. If no task can be performed, the model is not run. Any `cell_type` is accepted and answered with K562.
 
 ### **2.4 Error Handling**
 
 | Status | Error key | Triggers |
 |---|---|---|
-| 400 | `bad_prediction_request` | Malformed JSON, missing mandatory keys, unsupported readout/type, invalid prediction_ranges format |
-| 422 | `prediction_request_failed` | Sequence contains invalid characters, empty sequence, unsupported species/scale, prediction_range out of bounds |
+| 400 | `bad_prediction_request` | Malformed JSON, missing mandatory keys, unsupported readout (`track`, `interaction_matrix`), invalid `type` or `scale` value (not part of the GAME schema), invalid prediction_ranges (format, `start >= end`, keys that do not match `sequences`, out of bounds when the range is used) |
+| 422 | `prediction_request_failed` | Sequence contains invalid characters, empty sequence |
+| 200 (per task, inside `predictions`) | `prediction_request_failed` | A task that could not be performed: unsupported `species` or `type`. The other tasks in the request are still returned |
 | 500 | `server_error` | Model load failure, unexpected internal error |
 
 ---
@@ -360,3 +361,26 @@ This flag creates a strictly isolated environment, preventing the container from
     ```
 
 The `predictor_name` in the response matches the container build timestamp, allowing evaluation results to be traced back to a specific build.
+
+### **4.3. Tasks that cannot be performed**
+
+If a request has several `prediction_tasks`, DREAM-RNN predicts every task it can and still returns the ones it cannot (a `species` other than `homo_sapiens`, or a `type` that is not `expression` / `expression_*`). The HTTP status stays 200. A task that could not be performed has `name` and all `*_requested` keys as normal, every `*_actual` key set to `null`, and an error object as `predictions`:
+
+```json
+{
+    "name": "mouse_task",
+    "type_requested": "expression",
+    "type_actual": null,
+    "cell_type_requested": "K562",
+    "cell_type_actual": null,
+    "scale_prediction_requested": "linear",
+    "scale_prediction_actual": null,
+    "species_requested": "mus_musculus",
+    "species_actual": null,
+    "predictions": {
+        "error": [{"prediction_request_failed": "This predictor only supports species: homo_sapiens. Received 'mus_musculus'."}]
+    }
+}
+```
+
+A different `cell_type` is not a failure: DREAM-RNN always predicts for K562 and returns `cell_type_actual: "K562"`. Because it does not use the Matcher, the response has no `matcher_version`.

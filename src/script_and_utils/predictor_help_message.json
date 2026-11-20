@@ -5,8 +5,8 @@
   "features": ["expression"],
   "cell_types" : ["K562"],
   "species": ["homo_sapiens"],
-  "container_authors": "Satyam Piryadarshi",
+  "container_authors": "Satyam Priyadarshi",
   "model_authors": "Abdul Muntakim Rafi and Sambina Islam",
   "input_size": 230,
-  "expression_strand_specific": "false"
+  "expression_strand_specific": false
 }

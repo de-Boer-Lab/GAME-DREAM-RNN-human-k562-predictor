@@ -141,16 +141,16 @@ def check_prediction_task_name(prediction_tasks, json_return_error):
 
 
 def check_prediction_task_type(prediction_tasks, json_return_error):
-    # DREAM-RNN only predicts expression. We accept "expression" itself and
-    # the "expression_*" subtypes (e.g. expression_mRNA, expression_pol2 -- see
-    # API spec). Other top-level type categories (binding_*, conformation_*)
-    # are rejected here to fail early instead of running the model and
-    # returning expression predictions labeled with a non-expression type.
+    # Generic schema check: the type must be one of the GAME types (as in the other Predictors).
+    # DREAM-RNN predicts "expression" and the "expression_*" subtypes (e.g. expression_mRNA,
+    # expression_pol1, expression_pol2, expression_pol3 -- see API spec). A valid type it cannot
+    # perform (accessibility, binding_*, conformation_*) does not fail the request: that task fails on its
+    # own (see `unsupported_task_reason` in schema_validation.py) while the other tasks are still returned.
  
     # loop through object to check each array
     for prediction_task in prediction_tasks:
         # print(prediction_task)
-        prediction_task_options = ["expression"]
+        prediction_task_options = ["accessibility", "expression"]
         if type(prediction_task['type']) == list:
             json_return_error['bad_prediction_request'].append("'type' should only have 1 value")
  
@@ -159,13 +159,10 @@ def check_prediction_task_type(prediction_tasks, json_return_error):
             if isinstance(prediction_task['type'], str) == True:
  
                 if (prediction_task['type'] in prediction_task_options or
-                    prediction_task['type'].startswith('expression_')):
+                    prediction_task['type'].startswith(('binding_', 'expression_', 'conformation_'))):
                     pass
                 else:
-                    json_return_error['bad_prediction_request'].append(
-                        f"prediction type '{prediction_task['type']}' is not supported by DREAM-RNN. "
-                        "Only 'expression' and 'expression_*' subtypes are accepted."
-                    )
+                    json_return_error['bad_prediction_request'].append("prediction type " + str(prediction_task['type']) + " is not recognized")
  
                 pass
             else:
@@ -235,7 +232,8 @@ def check_prediction_task_scale(prediction_tasks, json_return_error):
 def check_prediction_ranges(prediction_ranges, json_return_error):
     """
     Checks that prediction_ranges are formatted correctly.
-    Now includes checks for positive integers and start <= end.
+    Includes checks for non-negative integers and start < end.
+    Ranges are 0-indexed and half-open ([start, end), like Python slicing).
     """
     for key, value in prediction_ranges.items():
         
@@ -258,10 +256,10 @@ def check_prediction_ranges(prediction_ranges, json_return_error):
         end = value[1]
         
         if start < 0 or end < 0:
-            json_return_error['bad_prediction_request'].append(f"Invalid range for '{key}' in 'prediction_ranges': indices must be positive. Received [{start}, {end}]")
+            json_return_error['bad_prediction_request'].append(f"Invalid range for '{key}' in 'prediction_ranges': indices must be non-negative. Received [{start}, {end}]")
             
-        if start > end:
-            json_return_error['bad_prediction_request'].append(f"Invalid range for '{key}' in 'prediction_ranges': start index ({start}) cannot be greater than end index ({end}). Received [{start}, {end}]")
+        if start >= end:
+            json_return_error['bad_prediction_request'].append(f"Invalid range for '{key}' in 'prediction_ranges': start index ({start}) must be less than end index ({end}). Received [{start}, {end}]")
     
     return json_return_error
 
